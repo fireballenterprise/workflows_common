@@ -1,0 +1,70 @@
+---
+name: Python Tests
+run-name: "Python Tests (${{ github.head_ref || github.ref_name }})"
+
+# Reusable — the AI/Python repo CI (fireball_sidecar_toolkit, fireball_orchestrator,
+# fireball_ai_vault, ai_vault). Each caller passes a `checks` JSON array; every entry becomes its
+# own matrix leg (isolated check-run in the PR UI), running one `invoke` task after `uv sync`.
+#
+#   checks: >-
+#     [{"name":"ruff_lint","invoke":"tests.rufflint"},
+#      {"name":"pytest","invoke":"tests.pytest","node":"24","pre":"aws.cdk.ensure"}]
+#
+# `node` (optional) sets up Node before the check; `pre` (optional) runs `invoke <pre>` first.
+
+on:
+  workflow_call:
+    inputs:
+      python_version:
+        description: 'Python version for astral-sh/setup-uv'
+        required: false
+        type: string
+        default: '3.14'
+      checks:
+        description: 'JSON array of {name, invoke, node?, pre?}'
+        required: true
+        type: string
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(inputs.checks) }}
+    name: ${{ matrix.name }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v8.3.2
+        with:
+          python-version: ${{ inputs.python_version }}
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Setup Node
+        if: ${{ matrix.node }}
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Pre-step
+        if: ${{ matrix.pre }}
+        env:
+          PRE: ${{ matrix.pre }}
+        run: |
+          # shellcheck disable=SC2086
+          uv run --no-sync invoke $PRE
+
+      - name: ${{ matrix.name }}
+        env:
+          INVOKE: ${{ matrix.invoke }}
+        run: |
+          uv run --no-sync invoke debug.env
+          # shellcheck disable=SC2086
+          uv run --no-sync invoke $INVOKE

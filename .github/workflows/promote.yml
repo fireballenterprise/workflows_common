@@ -1,0 +1,56 @@
+---
+name: Promote
+run-name: "Promote (${{ inputs.source }} -> ${{ inputs.target }})"
+
+# Reusable — promote a source branch onto a target branch with a `--no-ff -X theirs` merge
+# (source is the source of truth; on conflict its side wins). The family's dev -> main release step.
+#
+# Auth: same rule as resolve_version.yml — bot App if `vars.BOT_APP_ID` is set, else GITHUB_TOKEN.
+
+on:
+  workflow_call:
+    inputs:
+      source:
+        description: 'Branch to promote from'
+        required: false
+        type: string
+        default: development
+      target:
+        description: 'Branch to promote onto'
+        required: false
+        type: string
+        default: main
+      message:
+        description: 'Merge commit message'
+        required: false
+        type: string
+        default: 'chore: release to production'
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read  # pushes go through the token resolved below
+    steps:
+      - name: Generate bot token
+        id: bot
+        if: ${{ vars.BOT_APP_ID != '' }}
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.BOT_APP_ID }}
+          private-key: ${{ secrets.BOT_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.source }}
+          fetch-depth: 0  # full history so source/target share a discoverable common ancestor
+          token: ${{ steps.bot.outputs.token || github.token }}
+
+      - name: Merge ${{ inputs.source }} to ${{ inputs.target }}
+        run: |
+          git config user.name "Levon Becker"
+          git config user.email "LevonBecker@users.noreply.github.com"
+          git fetch origin "${{ inputs.target }}"
+          git checkout "${{ inputs.target }}"
+          git merge "origin/${{ inputs.source }}" --no-ff -X theirs -m "${{ inputs.message }}"
+          git push origin "${{ inputs.target }}"

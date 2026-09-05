@@ -1,0 +1,85 @@
+---
+name: GitHub Release
+run-name: "GitHub Release (${{ inputs.version }})"
+
+# Reusable — optionally tag `ref`, then publish a GitHub Release with auto-generated notes.
+# Consumer repos tag with no `v` prefix (Fireball versioning, e.g. 1.5.1); the workflow repos
+# themselves set `v_prefix: true`. Set `tag: true` to also push an exact + floating-major tag
+# (force-moved) before the Release; leave it false when an earlier step already tagged.
+#
+# Auth: bot App if `vars.BOT_APP_ID` is set, else GITHUB_TOKEN.
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: 'Version string to tag / title the Release with'
+        required: true
+        type: string
+      ref:
+        description: 'Ref to target the Release at'
+        required: false
+        type: string
+        default: main
+      tag:
+        description: 'Also create the tag (exact + floating major) before the Release'
+        required: false
+        type: boolean
+        default: false
+      v_prefix:
+        description: 'Prefix tags with `v` (workflow repos only; consumers = false)'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # push tags and create the Release
+    env:
+      VERSION: ${{ inputs.version }}
+      REF: ${{ inputs.ref }}
+      V_PREFIX: ${{ inputs.v_prefix }}
+    steps:
+      - name: Generate bot token
+        id: bot
+        if: ${{ vars.BOT_APP_ID != '' }}
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.BOT_APP_ID }}
+          private-key: ${{ secrets.BOT_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          token: ${{ steps.bot.outputs.token || github.token }}
+
+      - name: Tag
+        if: ${{ inputs.tag }}
+        run: |
+          git config user.name "Levon Becker"
+          git config user.email "LevonBecker@users.noreply.github.com"
+          prefix=""
+          [ "$V_PREFIX" = "true" ] && prefix="v"
+          exact="${prefix}${VERSION}"
+          major="${prefix}${VERSION%%.*}"
+          if git ls-remote --exit-code --tags origin "refs/tags/$exact" > /dev/null 2>&1; then
+            echo "$exact already tagged — skipping" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          git tag "$exact"
+          git tag -f "$major"
+          git push origin "$exact"
+          git push -f origin "$major"
+
+      - name: Create GitHub Release
+        run: |
+          prefix=""
+          [ "$V_PREFIX" = "true" ] && prefix="v"
+          gh release create "${prefix}${VERSION}" \
+            --target "$REF" \
+            --title "${prefix}${VERSION}" \
+            --generate-notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
