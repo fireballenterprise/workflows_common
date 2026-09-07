@@ -44,3 +44,8 @@ are authored `Levon Becker <LevonBecker@users.noreply.github.com>` — never `gi
 
 `actionlint.yml` and `publish_release.yml` are **not** reusable — they self-test / self-release
 this repo.
+
+## Native macOS consumers
+`native_macos.yml` checks out app content and a commit-pinned orchestration repository, then invokes its existing packaging task on a macOS runner. The task must test/build and produce `build/*-macos.zip` plus provenance JSON. Supply a read-only `ORCHESTRATOR_READ_TOKEN`; checkout does not persist credentials. It returns the tested commit/version and uploads `native-macos` for the same workflow run.
+
+For gated promotion, pass that commit to `promote.yml` as `expected_source_sha` and set `fast_forward_only: true`. A changed source branch fails rather than promoting untested changes. Defaults preserve existing consumers. `github_release.yml` accepts optional `artifact_name`, `draft`, and `prerelease` inputs; the download is scoped to the current run. Existing callers retain their original behavior.
