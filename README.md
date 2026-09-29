@@ -3,7 +3,8 @@
 Shared GitHub Actions primitives — one composite action plus a set of reusable workflows — for
 the family's CI. Consumed by [`workflows_shopify`](https://github.com/fireballenterprise/workflows_shopify),
 [`workflows_web`](https://github.com/fireballenterprise/workflows_web), and the AI/Python repos
-(`fireball_sidecar_toolkit`, `fireball_orchestrator`, `fireball_ai_vault`, `ai_vault`).
+(`fireball_ai_toolkit`, `fireball_orchestrator`, `fireball_ai_vault`, `ai_vault`) and the Designer /
+Warehouse app repos.
 
 ## Versioning
 Tags use a `v` prefix: `vMAJOR.MINOR.PATCH` (e.g. `v1.0.0`), dual-tagged with a floating major
@@ -17,10 +18,10 @@ Every reusable workflow that pushes a branch or tag resolves its token the same 
 `${{ steps.bot.outputs.token || github.token }}`, where the bot step runs only
 `if: ${{ vars.BOT_APP_ID != '' }}`.
 
-- Repos with branch protection (`workflows_shopify`, `fireball_sidecar_toolkit`) set the repo
+- Repos with branch protection (`workflows_shopify`, `fireball_ai_toolkit`) set the repo
   variable `BOT_APP_ID` + secret `BOT_PRIVATE_KEY` → pushes go through the org-wide
   `fireball-actions-bot` App (a ruleset bypass actor).
-- Repos with no protection (the landing sites) set neither → the default `GITHUB_TOKEN` is used.
+- Repos with no protection (the static sites) set neither → the default `GITHUB_TOKEN` is used.
 
 Callers pass `secrets: inherit` so `BOT_PRIVATE_KEY` is visible where it exists. Automated commits
 are authored `Levon Becker <LevonBecker@users.noreply.github.com>` — never `github-actions[bot]`.
