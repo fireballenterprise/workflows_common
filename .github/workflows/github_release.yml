@@ -26,6 +26,21 @@ on:
         required: false
         type: boolean
         default: false
+      artifact_name:
+        description: Optional artifact from this workflow run to attach
+        required: false
+        type: string
+        default: ''
+      draft:
+        description: Create a draft release
+        required: false
+        type: boolean
+        default: false
+      prerelease:
+        description: Mark the release as prerelease
+        required: false
+        type: boolean
+        default: false
       v_prefix:
         description: 'Prefix tags with `v` (workflow repos only; consumers = false)'
         required: false
@@ -73,13 +88,32 @@ jobs:
           git push origin "$exact"
           git push -f origin "$major"
 
+      - name: Download release assets
+        if: ${{ inputs.artifact_name != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: release-assets
+
       - name: Create GitHub Release
         run: |
           prefix=""
           [ "$V_PREFIX" = "true" ] && prefix="v"
-          gh release create "${prefix}${VERSION}" \
+          flags=()
+          [ "$DRAFT" = "true" ] && flags+=(--draft)
+          [ "$PRERELEASE" = "true" ] && flags+=(--prerelease)
+          assets=()
+          if [ -n "$ARTIFACT_NAME" ]; then
+            shopt -s nullglob
+            assets=(release-assets/*)
+            [ "${#assets[@]}" -gt 0 ] || { echo 'No release assets'; exit 1; }
+          fi
+          gh release create "${prefix}${VERSION}" "${flags[@]}" "${assets[@]}" \
             --target "$REF" \
             --title "${prefix}${VERSION}" \
             --generate-notes
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ARTIFACT_NAME: ${{ inputs.artifact_name }}
+          DRAFT: ${{ inputs.draft }}
+          GH_TOKEN: ${{ steps.bot.outputs.token || github.token }}
+          PRERELEASE: ${{ inputs.prerelease }}

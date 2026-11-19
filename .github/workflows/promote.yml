@@ -20,6 +20,16 @@ on:
         required: false
         type: string
         default: main
+      expected_source_sha:
+        description: Optional tested source commit; abort if the branch advanced
+        required: false
+        type: string
+        default: ''
+      fast_forward_only:
+        description: Refuse divergence instead of making a merge commit
+        required: false
+        type: boolean
+        default: false
       message:
         description: 'Merge commit message'
         required: false
@@ -47,10 +57,25 @@ jobs:
           token: ${{ steps.bot.outputs.token || github.token }}
 
       - name: Merge ${{ inputs.source }} to ${{ inputs.target }}
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_source_sha }}
+          FAST_FORWARD: ${{ inputs.fast_forward_only }}
+          SOURCE: ${{ inputs.source }}
+          TARGET: ${{ inputs.target }}
+          MESSAGE: ${{ inputs.message }}
         run: |
           git config user.name "Levon Becker"
           git config user.email "LevonBecker@users.noreply.github.com"
-          git fetch origin "${{ inputs.target }}"
-          git checkout "${{ inputs.target }}"
-          git merge "origin/${{ inputs.source }}" --no-ff -X theirs -m "${{ inputs.message }}"
-          git push origin "${{ inputs.target }}"
+          git fetch origin "$SOURCE" "$TARGET"
+          source_sha="$(git rev-parse "origin/$SOURCE")"
+          if [ -n "$EXPECTED_SHA" ] && [ "$source_sha" != "$EXPECTED_SHA" ]; then
+            echo 'Source branch changed since validation; rerun the workflow.'
+            exit 1
+          fi
+          git checkout "$TARGET"
+          if [ "$FAST_FORWARD" = "true" ]; then
+            git merge --ff-only "$source_sha"
+          else
+            git merge "$source_sha" --no-ff -X theirs -m "$MESSAGE"
+          fi
+          git push origin "$TARGET"

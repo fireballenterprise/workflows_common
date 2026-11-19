@@ -1,0 +1,83 @@
+---
+name: Native macOS
+run-name: "Native macOS (${{ inputs.app_ref }})"
+on:
+  workflow_call:
+    inputs:
+      app_ref:
+        description: App commit or branch to validate
+        required: true
+        type: string
+      orchestrator_repository:
+        description: Repository owning native lifecycle tasks
+        required: true
+        type: string
+      orchestrator_ref:
+        description: Pinned orchestrator commit containing the lifecycle tasks
+        required: true
+        type: string
+      invoke_task:
+        description: Trusted packaging task (tests, builds, creates build/*.zip and *.json)
+        required: true
+        type: string
+    secrets:
+      ORCHESTRATOR_READ_TOKEN:
+        description: Read-only access to the private orchestration repository
+        required: true
+    outputs:
+      commit:
+        value: ${{ jobs.native.outputs.commit }}
+      version:
+        value: ${{ jobs.native.outputs.version }}
+jobs:
+  native:
+    runs-on: macos-latest
+    permissions:
+      contents: read
+    outputs:
+      commit: ${{ steps.source.outputs.commit }}
+      version: ${{ steps.source.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.app_ref }}
+          path: app
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ inputs.orchestrator_repository }}
+          ref: ${{ inputs.orchestrator_ref }}
+          token: ${{ secrets.ORCHESTRATOR_READ_TOKEN }}
+          path: orchestration
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v8
+        with:
+          python-version: '3.14'
+      - name: Resolve validated source
+        id: source
+        working-directory: app
+        run: |
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "version=$(tr -d '[:space:]' < VERSION)" >> "$GITHUB_OUTPUT"
+      - name: Require pinned tooling
+        env:
+          TOOLING_REF: ${{ inputs.orchestrator_ref }}
+          TASK_NAME: ${{ inputs.invoke_task }}
+        run: |
+          [[ "$TOOLING_REF" =~ ^[0-9a-f]{40}$ ]] || { echo 'Pin orchestrator_ref to a commit SHA'; exit 1; }
+          [[ "$TASK_NAME" =~ ^[a-zA-Z0-9_.]+$ ]] || { echo 'Invalid Invoke task name'; exit 1; }
+      - name: Install orchestration dependencies
+        working-directory: orchestration
+        run: uv sync --locked
+      - name: Test and package with the local lifecycle task
+        working-directory: orchestration
+        env:
+          TASK_NAME: ${{ inputs.invoke_task }}
+        run: uv run --no-sync invoke "$TASK_NAME" --repo="$GITHUB_WORKSPACE/app"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-macos
+          path: |
+            app/build/*-macos.zip
+            app/build/*-macos.json
+          if-no-files-found: error
